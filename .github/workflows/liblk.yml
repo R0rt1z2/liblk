@@ -1,0 +1,27 @@
+name: liblk
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+  workflow_dispatch:
+    branches: [ master ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: |
+          sudo apt-get install -y git
+          python -m pip install --upgrade pip
+          pip install --upgrade git+https://github.com/R0rt1z2/liblk
+      - name: Run tests
+        run: |
+            python -m unittest discover -s tests -p '*_test.py'
