@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "liblk"
+version = "1.0.0"
+authors = [
+    { name = "Roger Ortiz", email = "me@r0rt1z2.com" }
+]
+description = "A simple library for manipulating and modifying the bootloader (LK) of MTK devices."
+readme = "README.md"
+requires-python = ">=3.11.0"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+]
+
+[project.urls]
+homepage = "https://github.com/R0rt1z2/liblk"
