@@ -92,7 +92,7 @@ class LkImage:
         if offset != -1:
             # Replace the needle with the patch. We don't need to worry about the length of the
             # patch, since maybe the user wants to replace a 4-byte needle with a 1-byte patch.
-            self.lk_contents[offset:offset + len(needle)] = patch
+            self.lk_contents[offset:offset + len(patch)] = patch
         else:
             raise NeedleNotFoundException(needle)
 
