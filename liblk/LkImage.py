@@ -15,15 +15,17 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
 
+from pathlib import Path
+
 from liblk.Exceptions import InvalidLkPartition, NeedleNotFoundException
 from liblk.Constants import Magic
 from liblk.structure.LkPartition import LkPartition
 
 
 class LkImage:
-    def __init__(self, lk: str | bytes | bytearray, rename_duplicates=True) -> None:
+    def __init__(self, lk: str | bytes | bytearray | Path, rename_duplicates=True) -> None:
         '''Initialize the LK image.'''
-        if isinstance(lk, str):
+        if isinstance(lk, str) or isinstance(lk, Path):
             self.lk_contents: bytearray = self.load_image(lk)
         elif isinstance(lk, bytes):
             self.lk_contents: bytearray = bytearray(lk)
