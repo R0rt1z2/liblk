@@ -26,6 +26,7 @@ class LkImage:
     def __init__(self, lk: str | bytes | bytearray | Path, rename_duplicates=True) -> None:
         '''Initialize the LK image.'''
         if isinstance(lk, str) or isinstance(lk, Path):
+            self.lk_path : str = str(lk)
             self.lk_contents: bytearray = self.load_image(lk)
         elif isinstance(lk, bytes):
             self.lk_contents: bytearray = bytearray(lk)
