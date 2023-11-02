@@ -56,7 +56,10 @@ class LkImage:
             # Always make sure the partition header magic is valid, this is the only way to tell
             # whether the partition is valid or not.
             if not partition.header.magic == Magic.MAGIC:
-                raise InvalidLkPartition(f"Invalid magic 0x{partition.header.magic:x} at offset 0x{offset:x}")
+                if len(self.partitions) != 0 and self.partitions[-1]["name"] == 'lk':
+                    break # In legacy LK images, this is completely fine, so just break the loop.
+                else:
+                    raise InvalidLkPartition(f"Invalid magic 0x{partition.header.magic:x} at offset 0x{offset:x}")
 
             # There are certain cases where one partition is repeated more than once. In order
             # to avoid name collisions, append a number to the name (e.g. "cert1" -> "cert1 (1)").
