@@ -1,20 +1,48 @@
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "liblk"
-version = "1.0.0"
+version = "2.0.0"
 authors = [
     { name = "Roger Ortiz", email = "me@r0rt1z2.com" }
 ]
-description = "A simple library for manipulating and modifying the bootloader (LK) of MTK devices."
+description = "A library for manipulating and modifying MTK device bootloaders (LK)"
 readme = "README.md"
-requires-python = ">=3.11.0"
+requires-python = ">=3.8"
+license = { file = "LICENSE" }
 classifiers = [
-    "Programming Language :: Python :: 3",
+    "Intended Audience :: Developers",
     "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: System :: Hardware :: Hardware Drivers"
 ]
 
+[project.optional-dependencies]
+dev = [
+    "ruff",
+    "mypy",
+    "pytest"
+]
+
+[project.scripts]
+lk-patch = "examples.apply_binary_patch:main"
+lk-dump = "examples.dump_partitions:main"
+
 [project.urls]
-homepage = "https://github.com/R0rt1z2/liblk"
+Homepage = "https://github.com/R0rt1z2/liblk"
+Repository = "https://github.com/R0rt1z2/liblk"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["liblk*", "examples*"]
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
