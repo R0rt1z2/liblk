@@ -1,22 +1,18 @@
-#
-# This file is part of liblk (https://github.com/R0rt1z2/liblk).
-# Copyright (c) 2023 Roger Ortiz.
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, version 3.
-#
-# This program is distributed in the hope that it will be useful, but
-# WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
-# General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program. If not, see <http://www.gnu.org/licenses/>.
-#
-__version__ = "1.0.0"
+"""
+SPDX-FileCopyrightText: 2025 Roger Ortiz <me@r0rt1z2.com>
+SPDX-License-Identifier: GPL-3.0-or-later
+"""
 
-from liblk.LkImage import LkImage
-from liblk.structure.LkPartition import LkPartition
-from liblk.structure.LkHeader import LkHeader
-from liblk.structure.LkExtHeader import LkExtHeader
+__version__ = '2.0.0'
+
+from liblk.constants import AddressingMode, Magic
+from liblk.exceptions import InvalidLkPartition, NeedleNotFoundException
+from liblk.image import LkImage
+
+__all__ = [
+    'LkImage',
+    'InvalidLkPartition',
+    'NeedleNotFoundException',
+    'Magic',
+    'AddressingMode',
+]

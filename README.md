@@ -4,7 +4,7 @@
 ![GitHub Issues](https://img.shields.io/github/issues-raw/R0rt1z2/liblk?color=red)
 
 `liblk` is a simple and tiny python library for manipulating LK (_Little Kernel_) images. It's flexible and has an easy-to-use API.
-The library requires Python 3.11 or higher.
+The library requires Python 3.8 or higher.
 
 ## Installation
 
@@ -17,21 +17,20 @@ pip3 install --upgrade git+https://github.com/R0rt1z2/liblk
 The folder [examples](https://github.com/R0rt1z2/liblk/tree/master/examples) contains a set of examples that aim to show how to use the library and highlight its features.
 
 ## Quick Start
-The library is very simple to use. You can use it to dump the information of an LK image. For example, to get details of all the partitions in the LK image, you can use the following code:
-
 ```python
-import sys
-from liblk.LkImage import LkImage
+from liblk import LkImage
 
-def main():
-    lk_image = LkImage(sys.argv[1])
-    partitions = lk_image.get_partition_list()
+# Load an LK image
+lk_image = LkImage("path/to/lk.img")
 
-    for partition in partitions:
-        print(str(partition))
+# Get list of partitions
+partitions = lk_image.get_partition_list()
+for partition_name in partitions:
+    partition = lk_image.get_partition_by_name(partition_name)
+    print(f"Partition: {partition_name}, Size: {len(partition.data)} bytes")
 
-if __name__ == "__main__":
-    main()
+# Apply a binary patch
+lk_image.apply_patch("30b583b002ab", "00207047")
 ```
 
 ## License

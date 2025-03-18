@@ -1,61 +1,128 @@
-#
-# This file is part of liblk (https://github.com/R0rt1z2/liblk).
-# Copyright (c) 2023 Roger Ortiz.
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, version 3.
-#
-# This program is distributed in the hope that it will be useful, but
-# WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
-# General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program. If not, see <http://www.gnu.org/licenses/>.
-#
+#!/usr/bin/env python3
+"""
+SPDX-FileCopyrightText: 2025 Roger Ortiz <me@r0rt1z2.com>
+SPDX-License-Identifier: GPL-3.0-or-later
+"""
 
+from __future__ import annotations
+
+import argparse
+import logging
+import os
 import sys
-from liblk.LkImage import LkImage
-from liblk.Exceptions import NeedleNotFoundException
+from typing import Optional
 
-# In this example we will patch the LK image to disable the dm verity state warning.
-# The warning is displayed when the bootloader detects that the device is unlocked.
-# This warning is displayed on the screen every time the device boots and you have
-# to press the power button to continue booting.
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# In order to disable this warning, we will patch the function that takes care of
-# displaying the warning. We do this by replacing the first 4 bytes of the function
-# with a 'return 0' instruction.
+try:
+    from liblk import LkImage, NeedleNotFoundException
+except ImportError:
+    print('Error: liblk module not found')
+    sys.exit(1)
 
-def main():
-    # First, we need to create the LkImage object. The constructor accepts multiple
-    # types of arguments, from a string containing the path to the LK image, to a
-    # bytearray containing the LK image contents. In this example, we are going to
-    # use the path to the LK image.
-    lk_image = LkImage(sys.argv[1])
 
-    # Now, once the LkImage object is created, we can use the apply_patch() method
-    # to patch the LK image. The function accepts two arguments, the first one is the
-    # bytes sequence that we want to patch, and the second one is the replacement.
-    # We can provide either the bytearray or a hex-string. In this example, we are
-    # going to use a hex-string:
-    # 30b583b002ab:      # 00207047:
-    # push {r4, r5, lr}  # mov r0, #0
-    # sub sp, #0xc       # bx lr (return 0)
-    # add r3, sp, #8
+def setup_logging(verbose: bool = False) -> logging.Logger:
+    """Configure logging for the script."""
+    log_level = logging.DEBUG if verbose else logging.INFO
+    logging.basicConfig(
+        level=log_level,
+        format='%(asctime)s - %(levelname)s: %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S',
+    )
+    return logging.getLogger(__name__)
+
+
+def validate_patch_input(needle: str, patch: str) -> tuple[bytes, bytes]:
+    """
+    Validate and convert patch inputs.
+
+    Args:
+        needle: Byte sequence to replace (hex string)
+        patch: Replacement byte sequence (hex string)
+
+    Returns:
+        Tuple of needle and patch as bytes
+    """
     try:
-        lk_image.apply_patch("30b583b002ab", "00207047")
+        needle_bytes = bytes.fromhex(needle)
+        patch_bytes = bytes.fromhex(patch)
+    except ValueError as e:
+        raise ValueError(f'Invalid hex input: {e}')
+
+    return needle_bytes, patch_bytes
+
+
+def apply_binary_patch(
+    image_path: str,
+    needle: str,
+    patch: str,
+    output_path: Optional[str] = None,
+    logger: Optional[logging.Logger] = None,
+) -> None:
+    """
+    Apply a binary patch to an LK image.
+
+    Args:
+        image_path: Path to the input LK image
+        needle: Hex string of bytes to replace
+        patch: Hex string of replacement bytes
+        output_path: Optional path for patched image
+        logger: Optional logger instance
+    """
+    log = logger or logging.getLogger(__name__)
+
+    output_path = (
+        output_path or os.path.splitext(image_path)[0] + '_patched.img'
+    )
+
+    try:
+        needle_bytes, patch_bytes = validate_patch_input(needle, patch)
+
+        lk_image = LkImage(image_path)
+        log.info(f'Loaded image: {image_path}')
+
+        lk_image.apply_patch(needle_bytes, patch_bytes)
+        log.info(f'Applied patch: {needle} -> {patch}')
+
+        lk_image.save(output_path)
+        log.info(f'Patched image saved: {output_path}')
+
     except NeedleNotFoundException as e:
-        # If the needle is not found, the patch() method will raise a NeedleNotFoundException
-        # exception. This exception is raised when the needle is not found in the LK image.
-        exit(f"Needle {e.needle} not found in the LK image.")
+        log.error(f'Patch failed: {e}')
+        sys.exit(1)
+    except Exception as e:
+        log.error(f'Error processing image: {e}')
+        sys.exit(1)
 
-    # Now that we have patched the LK image, we can save the patched image to a file.
-    with open("patched_lk.img", "wb") as f:
-        f.write(lk_image.lk_contents)
 
-    print("Patched LK image saved to patched_lk.img")
+def main() -> None:
+    """
+    Main script entry point.
+    Parse arguments and apply binary patch.
+    """
+    parser = argparse.ArgumentParser(
+        description='Apply binary patches to LK bootloader images'
+    )
+    parser.add_argument('image_path', help='Path to the input LK image')
+    parser.add_argument(
+        'needle', help="Hex string of bytes to replace (e.g., '30b583b002ab')"
+    )
+    parser.add_argument(
+        'patch', help="Hex string of replacement bytes (e.g., '00207047')"
+    )
+    parser.add_argument('-o', '--output', help='Path for the patched image')
+    parser.add_argument(
+        '-v', '--verbose', action='store_true', help='Enable verbose logging'
+    )
+
+    args = parser.parse_args()
+
+    logger = setup_logging(args.verbose)
+
+    apply_binary_patch(
+        args.image_path, args.needle, args.patch, args.output, logger
+    )
+
 
 if __name__ == '__main__':
     main()
