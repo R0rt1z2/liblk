@@ -87,3 +87,23 @@ class LkHeader:
             f'Addressing Mode : {self.addressing_mode}\n'
             f'Memory Address  : 0x{self.memory_address:08x}'
         )
+
+    def __bytes__(self) -> bytes:
+        """
+        Convert the LK header to its 512-byte binary representation.
+
+        Returns:
+            512-byte representation of the header
+        """
+        header_bytes = bytearray(512)
+
+        struct.pack_into('<I', header_bytes, 0, self.magic)
+        struct.pack_into('<I', header_bytes, 4, self.data_size)
+
+        name_bytes = self.name.encode('utf-8')
+        header_bytes[8 : 8 + len(name_bytes)] = name_bytes
+
+        struct.pack_into('<i', header_bytes, 40, self.addressing_mode)
+        struct.pack_into('<I', header_bytes, 44, self.memory_address)
+
+        return bytes(header_bytes)

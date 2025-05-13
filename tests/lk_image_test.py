@@ -82,14 +82,7 @@ class TestLkImageVariants(unittest.TestCase):
         """
         self._validate_image(
             self.test_images['standard'],
-            expected_partitions=[
-                'lk',
-                'cert1',
-                'cert2',
-                'lk_main_dtb',
-                'cert1 (1)',
-                'cert2 (1)',
-            ],
+            expected_partitions=['lk', 'lk_main_dtb'],
         )
 
     def test_legacy_image(self) -> None:

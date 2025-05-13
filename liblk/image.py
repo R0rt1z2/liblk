@@ -24,26 +24,20 @@ class LkImage:
     """
 
     @overload
-    def __init__(
-        self, source: Union[str, Path], rename_duplicates: bool = True
-    ) -> None: ...
+    def __init__(self, source: Union[str, Path]) -> None: ...
 
     @overload
-    def __init__(
-        self, source: Union[bytes, bytearray], rename_duplicates: bool = True
-    ) -> None: ...
+    def __init__(self, source: Union[bytes, bytearray]) -> None: ...
 
     def __init__(
         self,
         source: Union[str, Path, bytes, bytearray],
-        rename_duplicates: bool = True,
     ) -> None:
         """
         Initialize LK image from file or byte-like object.
 
         Args:
             source: Image source (file path or byte-like object)
-            rename_duplicates: Automatically rename duplicate partitions
 
         Raises:
             FileNotFoundError: If file path is invalid
@@ -57,7 +51,7 @@ class LkImage:
             self.contents = bytearray(source)
 
         self.partitions: List[Dict[str, Any]] = []
-        self._parse_partitions(rename_duplicates)
+        self._parse_partitions()
 
     def _load_image(self, path: Union[str, Path]) -> bytearray:
         """
@@ -72,18 +66,15 @@ class LkImage:
         with open(path, 'rb') as f:
             return bytearray(f.read())
 
-    def _parse_partitions(self, rename_duplicates: bool = False) -> None:
+    def _parse_partitions(self) -> None:
         """
-        Parse partitions from image contents.
-
-        Args:
-            rename_duplicates: Automatically rename duplicate partitions
+        Parse partitions from image contents and associate certificates.
 
         Raises:
             InvalidLkPartition: If partition parsing fails
         """
         offset = 0
-        name_counts: Dict[str, int] = {}
+        last_regular_part = None
 
         while offset < len(self.contents):
             try:
@@ -101,14 +92,12 @@ class LkImage:
                 )
 
             name = partition.header.name
-            if rename_duplicates:
-                if name in name_counts:
-                    name_counts[name] += 1
-                    name = f'{name} ({name_counts[name]})'
-                else:
-                    name_counts[name] = 0
 
-            self.partitions.append({'name': name, 'partition': partition})
+            if name.startswith('cert') and last_regular_part is not None:
+                last_regular_part['partition'].certs.append(partition)
+            else:
+                self.partitions.append({'name': name, 'partition': partition})
+                last_regular_part = self.partitions[-1]
 
             if (
                 partition.has_ext
