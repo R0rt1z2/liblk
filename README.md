@@ -23,11 +23,9 @@ from liblk import LkImage
 # Load an LK image
 lk_image = LkImage("path/to/lk.img")
 
-# Get list of partitions
-partitions = lk_image.get_partition_list()
-for partition_name in partitions:
-    partition = lk_image.get_partition_by_name(partition_name)
-    print(f"Partition: {partition_name}, Size: {len(partition.data)} bytes")
+# Iterate through the partitions
+for name, partition in lk_image.partitions.items():
+    print(f"Partition: {name}, Size: {len(partition.data)} bytes")
 
 # Apply a binary patch
 lk_image.apply_patch("30b583b002ab", "00207047")

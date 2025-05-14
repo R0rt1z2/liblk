@@ -92,10 +92,7 @@ def dump_partitions(
         lk_image = LkImage(image_path)
         log.info(f'Loaded image with {len(lk_image)} partitions')
 
-        for partition_info in lk_image.partitions:
-            name = str(partition_info['name'])
-            partition = partition_info['partition']
-
+        for name, partition in lk_image.partitions.items():
             if not isinstance(partition, LkPartition):
                 log.warning(f'Skipping non-LkPartition item: {name}')
                 continue

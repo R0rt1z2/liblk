@@ -38,7 +38,10 @@ class TestLkImageVariants(unittest.TestCase):
         }
 
     def _validate_image(
-        self, image_path: str, expected_partitions: Optional[List[str]] = None
+        self,
+        image_path: str,
+        expected_partitions: Optional[List[str]] = None,
+        expected_load_addr: Optional[int] = None,
     ) -> None:
         """
         Validate different types of LK images.
@@ -57,20 +60,20 @@ class TestLkImageVariants(unittest.TestCase):
             )
 
             if expected_partitions is not None:
-                actual_partitions = lk_image.get_partition_list()
-
+                actual_partitions = lk_image.partitions.keys()
                 self.assertEqual(
-                    len(actual_partitions),
-                    len(expected_partitions),
-                    f'Unexpected partition count for {image_path}',
+                    list(actual_partitions),
+                    expected_partitions,
+                    f'Listed partitions do not match expected: {image_path}',
                 )
 
-                for expected, actual in zip(
-                    expected_partitions, actual_partitions
-                ):
-                    self.assertEqual(
-                        actual, expected, f'Partition mismatch in {image_path}'
-                    )
+            if expected_load_addr is not None:
+                lk_partition = lk_image.partitions['lk']
+                self.assertEqual(
+                    lk_partition.lk_address,
+                    expected_load_addr,
+                    f'Load address mismatch in {image_path}',
+                )
 
         except InvalidLkPartition as e:
             if 'legacy' not in image_path:
@@ -83,6 +86,7 @@ class TestLkImageVariants(unittest.TestCase):
         self._validate_image(
             self.test_images['standard'],
             expected_partitions=['lk', 'lk_main_dtb'],
+            expected_load_addr=0x4C400000,
         )
 
     def test_legacy_image(self) -> None:
@@ -96,11 +100,11 @@ class TestLkImageVariants(unittest.TestCase):
                 len(lk_image.partitions), 0, 'Legacy image parsing failed'
             )
 
-            partitions = lk_image.get_partition_list()
+            partitions = lk_image.partitions.keys()
 
             if partitions:
                 for partition_name in partitions:
-                    partition = lk_image.get_partition_by_name(partition_name)
+                    partition = lk_image.partitions[partition_name]
                     self.assertIsNotNone(
                         partition,
                         f'Could not retrieve partition: {partition_name}',
@@ -132,6 +136,24 @@ class TestLkImageVariants(unittest.TestCase):
 
             except Exception as e:
                 self.fail(f'Patch test failed for {image_path}: {e}')
+
+    def test_image_rebuild(self) -> None:
+        """
+        Test rebuilding the LK image.
+        """
+        try:
+            with open(self.test_images['standard'], 'rb') as f:
+                original_contents = f.read()
+            lk_image = LkImage(original_contents)
+
+            self.assertEqual(
+                original_contents,
+                bytes(lk_image),
+                'Rebuilt image does not match original',
+            )
+
+        except Exception as e:
+            self.fail(f'Image rebuild test failed: {e}')
 
 
 if __name__ == '__main__':

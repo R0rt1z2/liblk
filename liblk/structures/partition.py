@@ -8,10 +8,9 @@ from __future__ import annotations
 import struct
 from typing import Any, List, Optional, Union
 
-from liblk.constants import Magic
+from liblk.constants import Pattern
 from liblk.exceptions import InvalidLkPartition
-from liblk.structures.ext_header import LkExtHeader
-from liblk.structures.header import LkHeader
+from liblk.structures.header import ImageHeader
 
 
 class LkPartition:
@@ -20,19 +19,19 @@ class LkPartition:
 
     Attributes:
         header: Primary partition header
-        ext_header: Optional extended header
         data: Raw partition data
         end_offset: End offset of the partition in the image
         certs: List of certificate partitions associated with this partition
+        lk_address: Load address of the LK image. Only set if this is the 'lk' partition, otherwise None.
     """
 
     def __init__(
         self,
-        header: LkHeader,
+        header: ImageHeader,
         data: bytes,
         end_offset: int,
-        ext_header: Optional[LkExtHeader] = None,
         certs: Optional[List['LkPartition']] = None,
+        lk_address: Optional[int] = None,
     ):
         """
         Initialize an LK partition.
@@ -41,14 +40,13 @@ class LkPartition:
             header: Primary partition header
             data: Raw partition data
             end_offset: End offset of the partition in the image
-            ext_header: Optional extended header
             certs: List of certificate partitions associated with this partition
         """
         self.header = header
-        self.data = data
+        self._data = data
         self.end_offset = end_offset
-        self.ext_header = ext_header
         self.certs = certs or []
+        self.lk_address = lk_address
 
     @property
     def cert1(self) -> Optional['LkPartition']:
@@ -79,16 +77,6 @@ class LkPartition:
                 return True
         return False
 
-    @property
-    def has_ext(self) -> bool:
-        """
-        Check if the partition has an extended header.
-
-        Returns:
-            True if extended header exists, False otherwise
-        """
-        return self.ext_header is not None
-
     @classmethod
     def from_bytes(
         cls, contents: Union[bytes, bytearray], offset: int = 0
@@ -109,76 +97,45 @@ class LkPartition:
         start_offset = 0x4040 if contents[:4] == b'BFBF' else 0
 
         try:
-            header = LkHeader.from_bytes(contents, start_offset)
+            header_contents = contents[start_offset : start_offset + 512]
+            header = ImageHeader.from_buffer_copy(header_contents)
 
-            has_ext = (
-                struct.unpack_from('<I', contents, start_offset + 48)[0]
-                == Magic.EXT_MAGIC
-            )
-            ext_header = (
-                LkExtHeader.from_bytes(contents[start_offset + 52 :])
-                if has_ext
-                else None
+            assert header.is_header, (
+                f'Invalid magic 0x{header.magic:x} at offset 0x{offset:x}'
             )
 
-            data_size = header.data_size | (
-                ext_header.data_size if ext_header else 0
-            )
+            end_offset = header.end_offset(offset)
 
-            header_size = ext_header.header_size if ext_header else 512
-            end_offset = offset + header_size + data_size
-
-            alignment = ext_header.alignment if ext_header else 8
+            alignment = header.alignment if header.is_extended else 8
             if alignment and end_offset % alignment:
                 end_offset += alignment - (end_offset % alignment)
 
-            partition_data = contents[header_size : header_size + data_size]
+            partition_data = contents[
+                header.size : header.size + header.data_size
+            ]
+
+            if header.name == 'lk':
+                lk_address = header.memory_address
+                if (lk_address & 0xFFFFFFFF) == 0xFFFFFFFF:
+                    loadaddr_index = contents.find(Pattern.LOADADDR)
+                    if loadaddr_index != -1:
+                        lk_address = struct.unpack_from(
+                            '<I', contents, loadaddr_index + 8
+                        )[0]
+            else:
+                lk_address = None
 
             return cls(
                 header=header,
                 data=partition_data,
                 end_offset=end_offset,
-                ext_header=ext_header,
+                lk_address=lk_address,
             )
 
         except Exception as e:
             raise InvalidLkPartition(
                 f'Failed to parse partition: {str(e)}'
             ) from e
-
-    def get_full_bytes(self) -> bytes:
-        """
-        Get bytes representation of partition with all its certificates.
-
-        Returns:
-            Byte representation of this partition followed by all its certificates
-        """
-        result = bytes(self)
-
-        for cert in self.certs:
-            result += bytes(cert)
-
-        return result
-
-    def rebuild(self, new_data: Optional[bytes] = None) -> 'LkPartition':
-        """
-        Create a new partition with updated data.
-
-        Args:
-            new_data: New data to use (if None, uses current data)
-
-        Returns:
-            New LkPartition instance with the same headers but updated data
-        """
-        data_to_use = new_data if new_data is not None else self.data
-
-        return LkPartition(
-            header=self.header,
-            data=data_to_use,
-            end_offset=self.end_offset,
-            ext_header=self.ext_header,
-            certs=self.certs,
-        )
 
     def save(self, filename: str) -> None:
         """
@@ -190,6 +147,27 @@ class LkPartition:
         with open(filename, 'wb') as f:
             f.write(self.data)
 
+    @property
+    def data(self) -> bytes:
+        """
+        Get the raw data of the partition.
+
+        Returns:
+            Raw partition data
+        """
+        return self._data
+
+    @data.setter
+    def data(self, value: bytes) -> None:
+        """
+        Set the raw data of the partition.
+
+        Args:
+            value: New raw partition data
+        """
+        self._data = value
+        self.header.data_size = len(value)
+
     def __str__(self) -> str:
         """
         Generate a string representation of the LK partition.
@@ -197,10 +175,12 @@ class LkPartition:
         Returns:
             Formatted string with partition details
         """
-        details = [str(self.header)]
-        if self.ext_header:
-            details.append(str(self.ext_header))
-        return '\n'.join(details)
+        return (
+            f'Partition Name  : {self.header.name}\n'
+            f'Data Size       : {self.header.data_size} bytes\n'
+            f'Addressing Mode : 0x{self.header.mode:08x}\n'
+            f'Memory Address  : 0x{self.lk_address:08x}'
+        )
 
     def __repr__(self) -> str:
         """
@@ -212,7 +192,7 @@ class LkPartition:
         return (
             f'LkPartition(name={self.header.name}, '
             f'data_size={len(self.data)}, '
-            f'has_ext_header={bool(self.ext_header)}, '
+            f'has_ext_header={bool(self.header.is_extended)}, '
             f'certs={len(self.certs)})'
         )
 
@@ -232,7 +212,6 @@ class LkPartition:
         return (
             self.header == other.header
             and self.data == other.data
-            and self.ext_header == other.ext_header
             and self.certs == other.certs
         )
 
@@ -250,47 +229,27 @@ class LkPartition:
         Convert the partition to bytes.
 
         Returns:
-            Complete binary representation of the partition including header and data
+            Complete binary representation of the partition including header, data
+            and certificate data.
         """
-        result = bytearray()
-        header_size = self.ext_header.header_size if self.ext_header else 512
-        header_bytes = bytearray(512)
-
-        struct.pack_into('<I', header_bytes, 0, self.header.magic)
-        struct.pack_into('<I', header_bytes, 4, self.header.data_size)
-
-        name_bytes = self.header.name.encode('utf-8')
-        header_bytes[8 : 8 + len(name_bytes)] = name_bytes
-
-        struct.pack_into('<I', header_bytes, 40, self.header.addressing_mode)
-        struct.pack_into('<I', header_bytes, 44, self.header.memory_address)
-
-        if self.ext_header:
-            struct.pack_into('<I', header_bytes, 48, Magic.EXT_MAGIC)
-            struct.pack_into(
-                '<I', header_bytes, 52, self.ext_header.header_size
-            )
-            struct.pack_into(
-                '<I', header_bytes, 56, self.ext_header.header_version
-            )
-            struct.pack_into('<I', header_bytes, 60, self.ext_header.image_type)
-            struct.pack_into(
-                '<I', header_bytes, 64, self.ext_header.image_list_end
-            )
-            struct.pack_into('<I', header_bytes, 68, self.ext_header.alignment)
-            struct.pack_into(
-                '<I', header_bytes, 72, self.ext_header.data_size >> 32
-            )
-            struct.pack_into(
-                '<I', header_bytes, 76, self.ext_header.memory_address >> 32
+        if self.header.data_size != len(self.data):
+            # If you are hitting this, please change your
+            # code to use the `data` property instead of
+            # accessing _data and header.data_size directly.
+            raise ValueError(
+                f'Header data size {self.header.data_size} does not match '
+                f'actual data size {len(self.data)}'
             )
 
-        result.extend(header_bytes[:header_size])
-        result.extend(self.data)
+        alignment = self.header.alignment if self.header.is_extended else 8
+        if alignment and self.header.data_size % alignment:
+            padding_size = alignment - (self.header.data_size % alignment)
+        else:
+            padding_size = 0
 
-        alignment = self.ext_header.alignment if self.ext_header else 8
-        if alignment and len(result) % alignment:
-            padding_size = alignment - (len(result) % alignment)
-            result.extend(b'\x00' * padding_size)
-
-        return bytes(result)
+        return (
+            bytes(self.header)
+            + bytes(self.data)
+            + b'\x00' * padding_size
+            + b''.join(bytes(cert) for cert in self.certs)
+        )

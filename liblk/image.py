@@ -5,8 +5,9 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 from __future__ import annotations
 
+from collections import OrderedDict
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union, overload
+from typing import Optional, Union, overload
 
 from liblk.constants import Magic
 from liblk.exceptions import InvalidLkPartition, NeedleNotFoundException
@@ -50,7 +51,7 @@ class LkImage:
             self.path = None
             self.contents = bytearray(source)
 
-        self.partitions: List[Dict[str, Any]] = []
+        self.partitions: OrderedDict[str, LkPartition] = OrderedDict()
         self._parse_partitions()
 
     def _load_image(self, path: Union[str, Path]) -> bytearray:
@@ -74,7 +75,7 @@ class LkImage:
             InvalidLkPartition: If partition parsing fails
         """
         offset = 0
-        last_regular_part = None
+        last_name = ''
 
         while offset < len(self.contents):
             try:
@@ -82,28 +83,33 @@ class LkImage:
                     self.contents[offset:], offset
                 )
             except InvalidLkPartition:
-                if self.partitions and self.partitions[-1].get('name') == 'lk':
+                if self.partitions and last_name == 'lk':
                     break
                 raise
 
-            if partition.header.magic != Magic.MAGIC:
+            part_magic = partition.header.magic
+            part_name = partition.header.name
+
+            if part_magic != Magic.MAGIC:
                 raise InvalidLkPartition(
-                    f'Invalid magic 0x{partition.header.magic:x} at offset 0x{offset:x}'
+                    f'Invalid magic 0x{part_magic:x} at offset 0x{offset:x}'
                 )
 
-            name = partition.header.name
-
-            if name.startswith('cert') and last_regular_part is not None:
-                last_regular_part['partition'].certs.append(partition)
+            if part_name.startswith('cert'):
+                if last_name not in self.partitions:
+                    raise InvalidLkPartition(
+                        'Certificate partition placed before actual partition'
+                    )
+                self.partitions[last_name].certs.append(partition)
+            elif part_name not in self.partitions:
+                last_name = part_name
+                self.partitions[last_name] = partition
             else:
-                self.partitions.append({'name': name, 'partition': partition})
-                last_regular_part = self.partitions[-1]
+                raise InvalidLkPartition(
+                    f'Duplicate partition name: {last_name}'
+                )
 
-            if (
-                partition.has_ext
-                and partition.ext_header
-                and partition.ext_header.image_list_end
-            ):
+            if partition.header.is_extended and partition.header.image_list_end:
                 break
 
             offset = partition.end_offset
@@ -136,30 +142,6 @@ class LkImage:
         else:
             raise NeedleNotFoundException(needle_bytes)
 
-    def get_partition_list(self) -> List[str]:
-        """
-        Retrieve names of all partitions.
-
-        Returns:
-            List of partition names
-        """
-        return [str(entry['name']) for entry in self.partitions]
-
-    def get_partition_by_name(self, name: str) -> Optional[LkPartition]:
-        """
-        Retrieve a specific partition by name.
-
-        Args:
-            name: Name of the partition
-
-        Returns:
-            Matching partition or None if not found
-        """
-        for entry in self.partitions:
-            if entry['name'] == name:
-                return entry['partition']  # type: ignore
-        return None
-
     def save(self, path: Union[str, Path]) -> None:
         """
         Save modified image contents to a file.
@@ -169,6 +151,18 @@ class LkImage:
         """
         with open(path, 'wb') as f:
             f.write(self.contents)
+
+    def __bytes__(self) -> bytes:
+        """
+        Bytes representation of the LK image.
+
+        Returns:
+            Concatenated bytes of all partitions
+            and their certificates.
+        """
+        return b''.join(
+            bytes(partition) for partition in self.partitions.values()
+        )
 
     def __len__(self) -> int:
         """

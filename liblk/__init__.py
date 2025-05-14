@@ -8,9 +8,11 @@ __version__ = '2.1.0'
 from liblk.constants import AddressingMode, Magic
 from liblk.exceptions import InvalidLkPartition, NeedleNotFoundException
 from liblk.image import LkImage
+from liblk.structures import ImageHeader
 
 __all__ = [
     'LkImage',
+    'ImageHeader',
     'InvalidLkPartition',
     'NeedleNotFoundException',
     'Magic',
