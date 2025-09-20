@@ -175,12 +175,16 @@ class LkPartition:
         Returns:
             Formatted string with partition details
         """
-        return (
+        result = (
             f'Partition Name  : {self.header.name}\n'
             f'Data Size       : {self.header.data_size} bytes\n'
-            f'Addressing Mode : 0x{self.header.mode:08x}\n'
-            f'Memory Address  : 0x{self.lk_address:08x}'
+            f'Addressing Mode : 0x{self.header.mode:08x}'
         )
+        
+        if self.lk_address is not None:
+            result += f'\nMemory Address  : 0x{self.lk_address:08x}'
+        
+        return result
 
     def __repr__(self) -> str:
         """
