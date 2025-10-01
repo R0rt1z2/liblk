@@ -13,7 +13,7 @@ from typing import ClassVar, Dict, List, Optional
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 try:
-    from liblk import InvalidLkPartition, LkImage
+    from liblk import InvalidLkPartition, LkImage, NeedleNotFoundException
 except ImportError:
     print('Error: liblk module not found')
     sys.exit(1)
@@ -136,6 +136,95 @@ class TestLkImageVariants(unittest.TestCase):
 
             except Exception as e:
                 self.fail(f'Patch test failed for {image_path}: {e}')
+
+    def test_partition_specific_patching(self) -> None:
+        """
+        Test partition-specific patching functionality.
+        """
+        try:
+            lk_image = LkImage(self.test_images['standard'])
+
+            if 'lk' not in lk_image.partitions:
+                self.skipTest('LK partition not found in test image')
+
+            original_partition_data = lk_image.partitions['lk'].data
+            test_needle = '30b583b002ab'
+            test_patch = '00207047'
+
+            lk_image.apply_patch(test_needle, test_patch, 'lk')
+
+            modified_partition_data = lk_image.partitions['lk'].data
+            self.assertNotEqual(
+                original_partition_data,
+                modified_partition_data,
+                'Partition data should be modified after patch',
+            )
+
+            self.assertIn(
+                bytes.fromhex(test_patch),
+                modified_partition_data,
+                'Patch should be present in partition data',
+            )
+
+        except Exception as e:
+            self.fail(f'Partition-specific patch test failed: {e}')
+
+    def test_partition_patch_isolation(self) -> None:
+        """
+        Test that partition-specific patches don't affect other partitions.
+        """
+        try:
+            lk_image = LkImage(self.test_images['standard'])
+
+            if len(lk_image.partitions) < 2:
+                self.skipTest('Need at least 2 partitions for isolation test')
+
+            partition_names = list(lk_image.partitions.keys())
+            target_partition = partition_names[0]
+            other_partition = partition_names[1]
+
+            original_other_data = lk_image.partitions[other_partition].data
+
+            lk_image.apply_patch('30b583b002ab', '00207047', target_partition)
+
+            modified_other_data = lk_image.partitions[other_partition].data
+            self.assertEqual(
+                original_other_data,
+                modified_other_data,
+                'Other partitions should not be affected by targeted patch',
+            )
+
+        except Exception as e:
+            self.fail(f'Partition isolation test failed: {e}')
+
+    def test_invalid_partition_patch(self) -> None:
+        """
+        Test error handling for non-existent partition names.
+        """
+        try:
+            lk_image = LkImage(self.test_images['standard'])
+
+            with self.assertRaises(KeyError):
+                lk_image.apply_patch('30b583b002ab', '00207047', 'nonexistent')
+
+        except Exception as e:
+            self.fail(f'Invalid partition test failed: {e}')
+
+    def test_partition_patch_needle_not_found(self) -> None:
+        """
+        Test error handling when needle is not found in specific partition.
+        """
+        try:
+            lk_image = LkImage(self.test_images['standard'])
+
+            if 'lk' not in lk_image.partitions:
+                self.skipTest('LK partition not found in test image')
+
+            with self.assertRaises(NeedleNotFoundException):
+                lk_image.apply_patch('DEADBEEFCAFEBABE', '00207047', 'lk')
+
+        except Exception as e:
+            self.fail(f'Needle not found test failed: {e}')
 
     def test_image_rebuild(self) -> None:
         """

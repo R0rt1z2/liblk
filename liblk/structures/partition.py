@@ -9,7 +9,7 @@ import struct
 from typing import Any, List, Optional, Union
 
 from liblk.constants import Pattern
-from liblk.exceptions import InvalidLkPartition
+from liblk.exceptions import InvalidLkPartition, NeedleNotFoundException
 from liblk.structures.header import ImageHeader
 
 
@@ -76,6 +76,37 @@ class LkPartition:
             if cert.header.name.startswith(cert_type):
                 return True
         return False
+
+    def apply_patch(
+        self,
+        needle: Union[str, bytes, bytearray],
+        patch: Union[str, bytes, bytearray],
+    ) -> None:
+        """
+        Apply a binary patch to the partition data.
+
+        Args:
+            needle: Byte sequence to replace
+            patch: Replacement byte sequence
+
+        Raises:
+            NeedleNotFoundException: If needle is not found
+        """
+        needle_bytes = (
+            bytes.fromhex(needle) if isinstance(needle, str) else bytes(needle)
+        )
+        patch_bytes = (
+            bytes.fromhex(patch) if isinstance(patch, str) else bytes(patch)
+        )
+
+        data_bytearray = bytearray(self._data)
+        offset = data_bytearray.find(needle_bytes)
+        if offset != -1:
+            data_bytearray[offset : offset + len(patch_bytes)] = patch_bytes
+            self._data = bytes(data_bytearray)
+            self.header.data_size = len(self._data)
+        else:
+            raise NeedleNotFoundException(needle_bytes)
 
     @classmethod
     def from_bytes(
@@ -180,10 +211,10 @@ class LkPartition:
             f'Data Size       : {self.header.data_size} bytes\n'
             f'Addressing Mode : 0x{self.header.mode:08x}'
         )
-        
+
         if self.lk_address is not None:
             result += f'\nMemory Address  : 0x{self.lk_address:08x}'
-        
+
         return result
 
     def __repr__(self) -> str:

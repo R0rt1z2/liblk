@@ -13,7 +13,6 @@ import sys
 from typing import Optional
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 try:
     from liblk import LkImage, NeedleNotFoundException
 except ImportError:
@@ -48,7 +47,6 @@ def validate_patch_input(needle: str, patch: str) -> tuple[bytes, bytes]:
         patch_bytes = bytes.fromhex(patch)
     except ValueError as e:
         raise ValueError(f'Invalid hex input: {e}')
-
     return needle_bytes, patch_bytes
 
 
@@ -57,36 +55,44 @@ def apply_binary_patch(
     needle: str,
     patch: str,
     output_path: Optional[str] = None,
+    partition: Optional[str] = None,
     logger: Optional[logging.Logger] = None,
 ) -> None:
     """
-    Apply a binary patch to an LK image.
+    Apply a binary patch to an LK image or specific partition.
 
     Args:
         image_path: Path to the input LK image
         needle: Hex string of bytes to replace
         patch: Hex string of replacement bytes
         output_path: Optional path for patched image
+        partition: Optional partition name to target
         logger: Optional logger instance
     """
     log = logger or logging.getLogger(__name__)
-
     output_path = (
         output_path or os.path.splitext(image_path)[0] + '_patched.img'
     )
 
     try:
         needle_bytes, patch_bytes = validate_patch_input(needle, patch)
-
         lk_image = LkImage(image_path)
         log.info(f'Loaded image: {image_path}')
 
-        lk_image.apply_patch(needle_bytes, patch_bytes)
-        log.info(f'Applied patch: {needle} -> {patch}')
+        if partition:
+            log.info(f'Targeting partition: {partition}')
+            lk_image.apply_patch(needle_bytes, patch_bytes, partition)
+        else:
+            log.info('Patching entire image')
+            lk_image.apply_patch(needle_bytes, patch_bytes)
 
+        log.info(f'Applied patch: {needle} -> {patch}')
         lk_image.save(output_path)
         log.info(f'Patched image saved: {output_path}')
 
+    except KeyError as e:
+        log.error(f'Partition not found: {e}')
+        sys.exit(1)
     except NeedleNotFoundException as e:
         log.error(f'Patch failed: {e}')
         sys.exit(1)
@@ -112,15 +118,24 @@ def main() -> None:
     )
     parser.add_argument('-o', '--output', help='Path for the patched image')
     parser.add_argument(
+        '-p',
+        '--partition',
+        help='Target specific partition (e.g., bl2_ext, lk)',
+    )
+    parser.add_argument(
         '-v', '--verbose', action='store_true', help='Enable verbose logging'
     )
 
     args = parser.parse_args()
-
     logger = setup_logging(args.verbose)
 
     apply_binary_patch(
-        args.image_path, args.needle, args.patch, args.output, logger
+        args.image_path,
+        args.needle,
+        args.patch,
+        args.output,
+        args.partition,
+        logger,
     )
 
 

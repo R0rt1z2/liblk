@@ -118,29 +118,39 @@ class LkImage:
         self,
         needle: Union[str, bytes, bytearray],
         patch: Union[str, bytes, bytearray],
+        partition: Optional[str] = None,
     ) -> None:
         """
-        Apply a binary patch to the image.
+        Apply a binary patch to the image or specific partition.
 
         Args:
             needle: Byte sequence to replace
             patch: Replacement byte sequence
+            partition: Optional partition name to patch. If None, patches entire image.
 
         Raises:
+            KeyError: If partition is specified but not found
             NeedleNotFoundException: If needle is not found
         """
-        needle_bytes = (
-            bytes.fromhex(needle) if isinstance(needle, str) else bytes(needle)
-        )
-        patch_bytes = (
-            bytes.fromhex(patch) if isinstance(patch, str) else bytes(patch)
-        )
-
-        offset = self.contents.find(needle_bytes)
-        if offset != -1:
-            self.contents[offset : offset + len(patch_bytes)] = patch_bytes
+        if partition is not None:
+            if partition not in self.partitions:
+                raise KeyError(f"Partition '{partition}' not found")
+            self.partitions[partition].apply_patch(needle, patch)
         else:
-            raise NeedleNotFoundException(needle_bytes)
+            needle_bytes = (
+                bytes.fromhex(needle)
+                if isinstance(needle, str)
+                else bytes(needle)
+            )
+            patch_bytes = (
+                bytes.fromhex(patch) if isinstance(patch, str) else bytes(patch)
+            )
+
+            offset = self.contents.find(needle_bytes)
+            if offset != -1:
+                self.contents[offset : offset + len(patch_bytes)] = patch_bytes
+            else:
+                raise NeedleNotFoundException(needle_bytes)
 
     def save(self, path: Union[str, Path]) -> None:
         """
