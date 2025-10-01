@@ -85,6 +85,9 @@ class LkImage:
             except InvalidLkPartition:
                 if self.partitions and last_name == 'lk':
                     break
+
+                if self.partitions:
+                    break
                 raise
 
             part_magic = partition.header.magic
@@ -109,10 +112,62 @@ class LkImage:
                     f'Duplicate partition name: {last_name}'
                 )
 
-            if partition.header.is_extended and partition.header.image_list_end:
+            if (
+                partition.header.is_extended
+                and partition.header.image_list_end == 1
+            ):
                 break
 
             offset = partition.end_offset
+
+            if (
+                not partition.header.is_extended
+                or not self._is_valid_image_list_end(
+                    partition.header.image_list_end
+                )
+            ):
+                if self._is_end_of_partitions(offset):
+                    break
+
+    def _is_valid_image_list_end(self, value: int) -> bool:
+        """
+        Check if image_list_end contains a valid boolean value.
+
+        Args:
+            value: The image_list_end value from header
+
+        Returns:
+            True if value is a valid boolean flag (0 or 1)
+        """
+        return value in (0, 1)
+
+    def _is_end_of_partitions(self, offset: int) -> bool:
+        """
+        Check if we've reached the end of valid partitions.
+
+        Args:
+            offset: Current offset to check
+
+        Returns:
+            True if no more valid partitions are expected
+        """
+        if offset >= len(self.contents):
+            return True
+
+        remaining = len(self.contents) - offset
+        if remaining < 512:
+            return True
+
+        try:
+            next_magic = int.from_bytes(
+                self.contents[offset : offset + 4], 'little'
+            )
+            if next_magic != Magic.MAGIC:
+                return True
+        except (IndexError, ValueError):
+            return True
+
+        return False
 
     def apply_patch(
         self,
