@@ -22,6 +22,7 @@ class LkImage:
         path: Optional path to the original image file
         contents: Raw image contents
         partitions: List of parsed partitions
+        version: LK image version (1 or 2)
     """
 
     @overload
@@ -52,7 +53,9 @@ class LkImage:
             self.contents = bytearray(source)
 
         self.partitions: OrderedDict[str, LkPartition] = OrderedDict()
+        self.version: int = 1
         self._parse_partitions()
+        self._detect_version()
 
     def _load_image(self, path: Union[str, Path]) -> bytearray:
         """
@@ -128,6 +131,17 @@ class LkImage:
             ):
                 if self._is_end_of_partitions(offset):
                     break
+
+    def _detect_version(self) -> None:
+        """
+        Detect LK image version based on partition presence.
+        Version 2 contains 'aee' or 'bl2_ext' partitions, version 1 does not.
+        """
+        v2_partitions = {'aee', 'bl2_ext'}
+        if any(partition in self.partitions for partition in v2_partitions):
+            self.version = 2
+        else:
+            self.version = 1
 
     def _is_valid_image_list_end(self, value: int) -> bool:
         """
@@ -247,6 +261,7 @@ class LkImage:
         """
         return (
             f'LkImage(path={self.path}, '
+            f'version={self.version}, '
             f'partitions={len(self.partitions)}, '
             f'size={len(self.contents)} bytes)'
         )
