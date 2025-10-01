@@ -3,7 +3,7 @@ SPDX-FileCopyrightText: 2025 Roger Ortiz <me@r0rt1z2.com>
 SPDX-License-Identifier: GPL-3.0-or-later
 """
 
-__version__ = '3.0.1'
+__version__ = '3.0.2'
 
 from liblk.constants import AddressingMode, Magic
 from liblk.exceptions import InvalidLkPartition, NeedleNotFoundException
