@@ -11,6 +11,7 @@ from typing import Optional, Union, overload
 
 from liblk.constants import Magic
 from liblk.exceptions import InvalidLkPartition, NeedleNotFoundException
+from liblk.structures.header import ImageHeader, ImageType
 from liblk.structures.partition import LkPartition
 
 
@@ -183,6 +184,173 @@ class LkImage:
 
         return False
 
+    def _create_header(
+        self,
+        name: str,
+        data_size: int,
+        memory_address: int = 0,
+        mode: int = 0,
+        image_type: Optional[ImageType] = None,
+        use_extended: Optional[bool] = None,
+        alignment: int = 8,
+    ) -> ImageHeader:
+        """
+        Create a new partition header.
+
+        Args:
+            name: Partition name
+            data_size: Size of partition data
+            memory_address: Load address in memory
+            mode: Addressing mode
+            image_type: Image type specification
+            use_extended: Force extended header format. If None, auto-detect based on data size
+            alignment: Data alignment requirement
+
+        Returns:
+            Configured ImageHeader instance
+        """
+        if len(name) > 32:
+            raise ValueError(f'Partition name too long: {name}')
+
+        if use_extended is None:
+            use_extended = data_size > 0xFFFFFFFF or memory_address > 0xFFFFFFFF
+
+        header = ImageHeader()
+        header.magic = Magic.MAGIC
+        header.name = name
+        header.data_size = data_size
+        header.memory_address = memory_address
+        header.mode = mode
+        header.image_list_end = 0
+
+        if use_extended:
+            header.ext_magic = Magic.EXT_MAGIC
+            header.hdr_size = 512
+            header.hdr_version = 1
+            header.alignment = alignment
+        else:
+            header.ext_magic = 0
+            header.hdr_size = 0
+            header.hdr_version = 0
+            header.alignment = 0
+
+        if image_type:
+            header.image_type = image_type
+        else:
+            img_type = ImageType()
+            img_type._group = ImageType.ImageGroup.GROUP_AP.value
+            img_type._id = ImageType.ImageAPType.AP_BIN.value
+            header.image_type = img_type
+
+        return header
+
+    def add_partition(
+        self,
+        name: str,
+        data: Union[bytes, bytearray],
+        memory_address: int = 0,
+        mode: int = 0,
+        image_type: Optional[ImageType] = None,
+        use_extended: Optional[bool] = None,
+        alignment: int = 8,
+        position: Optional[int] = None,
+    ) -> LkPartition:
+        """
+        Add a new partition to the LK image.
+
+        Args:
+            name: Partition name
+            data: Partition data
+            memory_address: Load address in memory
+            mode: Addressing mode
+            image_type: Image type specification
+            use_extended: Force extended header format. If None, auto-detect
+            alignment: Data alignment requirement
+            position: Insert position. If None, append to end
+
+        Returns:
+            Created LkPartition instance
+
+        Raises:
+            ValueError: If partition name already exists or is invalid
+        """
+        if name in self.partitions:
+            raise ValueError(f"Partition '{name}' already exists")
+
+        data_bytes = bytes(data)
+        header = self._create_header(
+            name=name,
+            data_size=len(data_bytes),
+            memory_address=memory_address,
+            mode=mode,
+            image_type=image_type,
+            use_extended=use_extended,
+            alignment=alignment,
+        )
+
+        partition = LkPartition(
+            header=header,
+            data=data_bytes,
+            end_offset=0,  # will be recalculated during rebuild
+        )
+
+        if position is None:
+            self.partitions[name] = partition
+        else:
+            items = list(self.partitions.items())
+            items.insert(position, (name, partition))
+            self.partitions = OrderedDict(items)
+
+        self._rebuild_contents()
+        return partition
+
+    def remove_partition(self, name: str) -> None:
+        """
+        Remove a partition from the LK image.
+
+        Args:
+            name: Name of partition to remove
+
+        Raises:
+            KeyError: If partition doesn't exist
+        """
+        if name not in self.partitions:
+            raise KeyError(f"Partition '{name}' not found")
+
+        del self.partitions[name]
+        self._rebuild_contents()
+
+    def _rebuild_contents(self) -> None:
+        """
+        Rebuild the image contents from partitions.
+        Ensures image_list_end flag is properly set on the last partition.
+        """
+        if not self.partitions:
+            self.contents = bytearray()
+            return
+
+        new_contents = bytearray()
+        partition_list = list(self.partitions.items())
+
+        for name, partition in partition_list:
+            partition.header.image_list_end = 0
+            for cert in partition.certs:
+                cert.header.image_list_end = 0
+
+        if partition_list:
+            last_partition = partition_list[-1][1]
+            if last_partition.certs:
+                last_partition.certs[-1].header.image_list_end = 1
+            else:
+                last_partition.header.image_list_end = 1
+
+        for i, (name, partition) in enumerate(partition_list):
+            partition_bytes = bytes(partition)
+            partition.end_offset = len(new_contents) + len(partition_bytes)
+            new_contents.extend(partition_bytes)
+
+        self.contents = new_contents
+
     def apply_patch(
         self,
         needle: Union[str, bytes, bytearray],
@@ -205,6 +373,7 @@ class LkImage:
             if partition not in self.partitions:
                 raise KeyError(f"Partition '{partition}' not found")
             self.partitions[partition].apply_patch(needle, patch)
+            self._rebuild_contents()
         else:
             needle_bytes = (
                 bytes.fromhex(needle)
@@ -239,9 +408,7 @@ class LkImage:
             Concatenated bytes of all partitions
             and their certificates.
         """
-        return b''.join(
-            bytes(partition) for partition in self.partitions.values()
-        )
+        return bytes(self.contents)
 
     def __len__(self) -> int:
         """

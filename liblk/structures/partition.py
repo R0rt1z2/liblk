@@ -10,7 +10,7 @@ from typing import Any, List, Optional, Union
 
 from liblk.constants import Pattern
 from liblk.exceptions import InvalidLkPartition, NeedleNotFoundException
-from liblk.structures.header import ImageHeader
+from liblk.structures.header import ImageHeader, ImageType
 
 
 class LkPartition:
@@ -74,6 +74,89 @@ class LkPartition:
 
         for cert in self.certs:
             if cert.header.name.startswith(cert_type):
+                return True
+        return False
+
+    def add_certificate(
+        self,
+        cert_data: Union[bytes, bytearray],
+        cert_type: str = 'cert1',
+        image_type: Optional[ImageType] = None,
+    ) -> 'LkPartition':
+        """
+        Add a certificate to this partition.
+
+        Args:
+            cert_data: Certificate data
+            cert_type: Certificate type ('cert1' or 'cert2')
+            image_type: Image type for certificate
+
+        Returns:
+            Created certificate partition
+
+        Raises:
+            ValueError: If cert_type is invalid
+        """
+        if cert_type not in ('cert1', 'cert2'):
+            raise ValueError(f'Invalid certificate type: {cert_type}')
+
+        base_name = self.header.name
+        cert_name = (
+            f'{cert_type}_{base_name}' if base_name != 'lk' else cert_type
+        )
+
+        cert_header = ImageHeader()
+        cert_header.magic = self.header.magic
+        cert_header.name = cert_name
+        cert_header.data_size = len(cert_data)
+        cert_header.memory_address = 0
+        cert_header.mode = 0
+        cert_header.image_list_end = 0
+
+        if self.header.is_extended:
+            cert_header.ext_magic = self.header.ext_magic
+            cert_header.hdr_size = 512
+            cert_header.hdr_version = 1
+            cert_header.alignment = self.header.alignment
+        else:
+            cert_header.ext_magic = 0
+            cert_header.hdr_size = 0
+            cert_header.hdr_version = 0
+            cert_header.alignment = 0
+
+        if image_type:
+            cert_header.image_type = image_type
+        else:
+            img_type = ImageType()
+            img_type._group = ImageType.ImageGroup.GROUP_CERT.value
+            if cert_type == 'cert1':
+                img_type._id = ImageType.ImageCertType.CERT1.value
+            else:
+                img_type._id = ImageType.ImageCertType.CERT2.value
+            cert_header.image_type = img_type
+
+        cert_partition = LkPartition(
+            header=cert_header,
+            data=bytes(cert_data),
+            end_offset=0,
+        )
+
+        self.certs.append(cert_partition)
+        return cert_partition
+
+    def remove_certificate(self, cert_type: str) -> bool:
+        """
+        Remove a certificate from this partition.
+
+        Args:
+            cert_type: Certificate type to remove ('cert1' or 'cert2')
+
+        Returns:
+            True if certificate was removed, False if not found
+        """
+        for i, cert in enumerate(self.certs):
+            if cert.header.name.startswith(cert_type):
+                del self.certs[i]
                 return True
         return False
 
@@ -167,6 +250,73 @@ class LkPartition:
             raise InvalidLkPartition(
                 f'Failed to parse partition: {str(e)}'
             ) from e
+
+    @classmethod
+    def create(
+        cls,
+        name: str,
+        data: Union[bytes, bytearray],
+        memory_address: int = 0xffffffff,
+        mode: int = 0xffffffff,
+        image_type: Optional[ImageType] = None,
+        use_extended: bool = False,
+        alignment: int = 8,
+    ) -> 'LkPartition':
+        """
+        Create a new LK partition.
+
+        Args:
+            name: Partition name
+            data: Partition data
+            memory_address: Load address in memory
+            mode: Addressing mode
+            image_type: Image type specification
+            use_extended: Use extended header format
+            alignment: Data alignment requirement
+
+        Returns:
+            New LkPartition instance
+
+        Raises:
+            ValueError: If name is too long
+        """
+        if len(name) > 32:
+            raise ValueError(f'Partition name too long: {name}')
+
+        from liblk.constants import Magic
+
+        header = ImageHeader()
+        header.magic = Magic.MAGIC
+        header.name = name
+        header.data_size = len(data)
+        header.memory_address = memory_address
+        header.mode = mode
+        header.image_list_end = 0
+
+        if use_extended:
+            header.ext_magic = Magic.EXT_MAGIC
+            header.hdr_size = 512
+            header.hdr_version = 1
+            header.alignment = alignment
+        else:
+            header.ext_magic = 0
+            header.hdr_size = 0
+            header.hdr_version = 0
+            header.alignment = 0
+
+        if image_type:
+            header.image_type = image_type
+        else:
+            img_type = ImageType()
+            img_type._group = ImageType.ImageGroup.GROUP_AP.value
+            img_type._id = ImageType.ImageAPType.AP_BIN.value
+            header.image_type = img_type
+
+        return cls(
+            header=header,
+            data=bytes(data),
+            end_offset=0,
+        )
 
     def save(self, filename: str) -> None:
         """
