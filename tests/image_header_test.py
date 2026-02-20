@@ -112,7 +112,7 @@ class TestImageHeaderClass(unittest.TestCase):
             f'Expected name "test", got {header.name}',
         )
         self.assertEqual(
-            header.image_type.id,
+            header.image_type.image_id,
             ImageType.ImageCertType.CERT2,
             f'Expected image type CERT2, got {header.image_type}',
         )

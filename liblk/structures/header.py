@@ -86,7 +86,7 @@ class ImageType(Structure):
         self._group = value.value
 
     @property
-    def id(self) -> Union[ImageAPType, ImageMDType, ImageCertType]:
+    def image_id(self) -> Union[ImageAPType, ImageMDType, ImageCertType]:
         """
         Get the image ID.
         """
@@ -99,8 +99,8 @@ class ImageType(Structure):
         else:
             raise ValueError('Invalid image group value')
 
-    @id.setter
-    def id(self, value: Union[ImageAPType, ImageMDType, ImageCertType]) -> None:
+    @image_id.setter
+    def image_id(self, value: Union[ImageAPType, ImageMDType, ImageCertType]) -> None:
         """
         Set the image ID.
 
@@ -120,7 +120,7 @@ class ImageType(Structure):
         Returns:
             Formatted string with image type details
         """
-        return f'ImageType(group={self.group.name}, id={self.id.name})'
+        return f'ImageType(group={self.group.name}, id={self.image_id.name})'
 
 
 class ImageHeader(Structure):
