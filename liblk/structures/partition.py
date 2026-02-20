@@ -228,7 +228,7 @@ class LkPartition:
                 header.size : header.size + header.data_size
             ]
 
-            if header.name == 'lk':
+            if header.name.lower() == 'lk':
                 lk_address = header.memory_address
                 if (lk_address & 0xFFFFFFFF) == 0xFFFFFFFF:
                     loadaddr_index = contents.find(Pattern.LOADADDR)
