@@ -100,7 +100,9 @@ class ImageType(Structure):
             raise ValueError('Invalid image group value')
 
     @image_id.setter
-    def image_id(self, value: Union[ImageAPType, ImageMDType, ImageCertType]) -> None:
+    def image_id(
+        self, value: Union[ImageAPType, ImageMDType, ImageCertType]
+    ) -> None:
         """
         Set the image ID.
 
