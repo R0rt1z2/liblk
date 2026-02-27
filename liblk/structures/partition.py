@@ -192,6 +192,62 @@ class LkPartition:
             raise NeedleNotFoundException(needle_bytes)
 
     @classmethod
+    def _detect_load_address(
+        cls,
+        contents: Union[bytes, bytearray],
+        data: Union[bytes, bytearray],
+    ) -> Optional[int]:
+        """
+        Detect the LK load address using known patterns.
+
+        Tries the v1 LOADADDR pattern first (from the raw partition contents),
+        then falls back to the v2 phys_offset pattern (from the code data).
+
+        Args:
+            contents: Raw partition contents (header + data)
+            data: Partition data (code only, no header)
+
+        Returns:
+            Load address if found, None otherwise
+        """
+        loadaddr_index = contents.find(Pattern.LOADADDR)
+        if loadaddr_index != -1:
+            return struct.unpack_from('<I', contents, loadaddr_index + 8)[0]
+
+        off = 0
+        while off < min(0x400, len(data) - 12):
+            off = data.find(Pattern.PHYS_OFFSET, off, 0x400)
+            if off == -1:
+                break
+
+            if data[off + 8 : off + 12] != Pattern.PHYS_OFFSET_SUB:
+                off += 4
+                continue
+
+            ldr_insn = struct.unpack_from('<I', data, off + 4)[0]
+            if (ldr_insn & 0xFF000000) != 0x58000000:
+                off += 4
+                continue
+
+            imm19 = (ldr_insn >> 5) & 0x7FFFF
+            if imm19 & (1 << 18):
+                imm19 -= 1 << 19
+            literal_off = (off + 4) + imm19 * 4
+
+            if literal_off < 0 or literal_off + 8 > len(data):
+                off += 4
+                continue
+
+            vaddr = struct.unpack_from('<Q', data, literal_off)[0]
+            if (vaddr >> 48) != 0xFFFF:
+                off += 4
+                continue
+
+            return vaddr - off
+
+        return None
+
+    @classmethod
     def from_bytes(
         cls, contents: Union[bytes, bytearray], offset: int = 0
     ) -> LkPartition:
@@ -229,13 +285,13 @@ class LkPartition:
             ]
 
             if header.name.lower() == 'lk':
-                lk_address = header.memory_address
-                if (lk_address & 0xFFFFFFFF) == 0xFFFFFFFF:
-                    loadaddr_index = contents.find(Pattern.LOADADDR)
-                    if loadaddr_index != -1:
-                        lk_address = struct.unpack_from(
-                            '<I', contents, loadaddr_index + 8
-                        )[0]
+                lk_address_raw = header.memory_address
+                if (lk_address_raw & 0xFFFFFFFF) == 0xFFFFFFFF:
+                    lk_address: Optional[int] = cls._detect_load_address(
+                        contents, partition_data
+                    )
+                else:
+                    lk_address = lk_address_raw
             else:
                 lk_address = None
 

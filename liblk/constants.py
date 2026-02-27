@@ -27,3 +27,5 @@ class Pattern:
     """Constant patterns used in LK image parsing."""
 
     LOADADDR: Final[bytes] = bytes.fromhex('10FF2FE1')
+    PHYS_OFFSET: Final[bytes] = bytes.fromhex('0f000010')
+    PHYS_OFFSET_SUB: Final[bytes] = bytes.fromhex('2f010fcb')
