@@ -1,5 +1,5 @@
 """
-SPDX-FileCopyrightText: 2025 Ben Grisdale <bengris32@protonmail.ch>
+SPDX-FileCopyrightText: 2025-2026 Ben Grisdale <bengris32@protonmail.ch>
 SPDX-License-Identifier: GPL-3.0-or-later
 """
 
