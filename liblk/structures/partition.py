@@ -6,7 +6,8 @@ SPDX-License-Identifier: GPL-3.0-or-later
 from __future__ import annotations
 
 import struct
-from typing import Any, List, Optional, Union
+from hashlib import sha256
+from typing import Any, List, Optional, Tuple, Union
 
 from liblk.constants import Pattern
 from liblk.exceptions import InvalidLkPartition, NeedleNotFoundException
@@ -76,6 +77,45 @@ class LkPartition:
             if cert.header.name.startswith(cert_type):
                 return True
         return False
+
+    def compute_hashes(self) -> Tuple[bytes, bytes]:
+        """
+        Compute the partition's header and data SHA-256 digests.
+
+        Returns:
+            Tuple of (header_hash, data_hash)
+        """
+        from liblk.structures.certificate import IMAGE_HASH_ALIGNMENT
+
+        header_hash = sha256(bytes(self.header)).digest()
+
+        data = bytes(self.data)
+        padding = (-len(data)) % IMAGE_HASH_ALIGNMENT
+        data_hash = sha256(data + b'\x00' * padding).digest()
+
+        return header_hash, data_hash
+
+    def matches_cert2(self) -> Optional[bool]:
+        """
+        Check whether cert2 still matches the partition contents.
+
+        Returns:
+            True if the certificate matches the current contents, False if it
+            does not, or None if the partition has no parseable ``cert2``.
+        """
+        if self.cert2 is None:
+            return None
+
+        from liblk.exceptions import InvalidCertificate
+        from liblk.structures.certificate import Certificate
+
+        try:
+            cert = Certificate.from_bytes(self.cert2.data)
+        except InvalidCertificate:
+            return None
+
+        header_hash, data_hash = self.compute_hashes()
+        return cert.matches(header_hash, data_hash)
 
     def add_certificate(
         self,
@@ -280,9 +320,9 @@ class LkPartition:
             if alignment and end_offset % alignment:
                 end_offset += alignment - (end_offset % alignment)
 
-            partition_data = contents[
-                header.size : header.size + header.data_size
-            ]
+            partition_data = bytes(
+                contents[header.size : header.size + header.data_size]
+            )
 
             if header.name.lower() == 'lk':
                 lk_address_raw = header.memory_address

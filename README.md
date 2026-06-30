@@ -19,6 +19,7 @@ The folder [examples](https://github.com/R0rt1z2/liblk/tree/master/examples) con
 ## Quick Start
 ```python
 from liblk import LkImage
+from liblk import Certificate
 
 # Load an LK image
 lk_image = LkImage("path/to/lk.img")
@@ -29,6 +30,14 @@ for name, partition in lk_image.partitions.items():
 
 # Apply a binary patch
 lk_image.apply_patch("30b583b002ab", "00207047")
+
+# Inspect a partition's cert2
+lk = lk_image.partitions["lk"]
+if lk.cert2 is not None:
+    cert = Certificate.from_bytes(lk.cert2.data)
+    print("cert2 matches contents:", lk.matches_cert2())
+    print("embedded header hash:", cert.header_hash.hex())
+    print("embedded image hash :", cert.image_hash.hex())
 ```
 
 ## License

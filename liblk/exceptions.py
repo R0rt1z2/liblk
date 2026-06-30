@@ -41,6 +41,26 @@ class InvalidLkPartition(LkImageError):
         self.reason = reason
 
 
+class InvalidCertificate(LkImageError):
+    """
+    Raised when a partition certificate cannot be parsed or is not in the
+    expected MediaTek format.
+
+    Attributes:
+        reason: Specific reason the certificate is considered invalid
+    """
+
+    def __init__(self, reason: str):
+        """
+        Initialize the invalid certificate error.
+
+        Args:
+            reason: Reason the certificate is invalid
+        """
+        super().__init__(f'Invalid certificate: {reason}')
+        self.reason = reason
+
+
 class NeedleNotFoundException(LkImageError):
     """
     Raised when a specific byte sequence is not found in the LK image.
